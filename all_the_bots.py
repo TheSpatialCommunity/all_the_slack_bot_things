@@ -8,7 +8,7 @@ from random import randint
 from threading import Thread
 from flask import jsonify
 import random
-
+import fnmatch
 
 from scoreboard_renderer import renderBitch
 app = Flask(__name__)
@@ -239,8 +239,47 @@ def moneyOnTheFloor(n, r):
         numbers.append(0)
     return numbers
 
+@slack.command('channels', token='xxxx',
+               team_id='xxxx', methods=['POST'])
+def channelGlob(**kwargs):
+    '''
+    Example of intended use:
+    /channels loc-*
+    #loc-africa (50 members)
+    #loc-australia (43 members)
 
-
+    https://api.slack.com/methods/channels.list
+    https://api.slack.com/types/channel
+    '''
+    user_glob = kwargs.get('text')
+    token = 'xxxx'
+    bot_username = 'channel_globber'
+    params = {
+        'token': token,
+        'exclude_archived': True,
+        'exclude_members': True
+    }
+    channels_response = requests.get("https://slack.com/api/channels.list", params=params)
+    if channels_response["ok"] !== True:
+        return slack.response("Globbiddy glob error, tell an admin?", response_type='ephemeral')
+    channels_response['channels'] = fnmatch.filter(channels_response['channels'], user_glob)
+    if len(channels_response['channels']) <= 0:
+        # No channels match
+        _response_type = 'ephemeral'
+        response_payload = "Sorry, no channels match {glob}".format(glob=user_glob)
+    else:
+        # Got at least one channel
+        # Sort them based on membership
+        channels_response['channels'].sort(key=lambda c: c['num_members'], reverse=True)
+        _response_type = 'in_channel'
+        if len(channels_response) <= 5:
+            # Short list
+            format_func = lambda c: "#{channel} – {purpose} ({n} members)".format(channel=c['name'], purpose=c.get('purpose', {}).get('value', '🌍'), c['num_members'])
+        else:
+            # Longer list
+            format_func = lambda c: "#{channel} ({n} members)".format(channel=c['name'], c['num_members'])
+        response_payload = map(format_func, channels_response['channels']).join('\n')
+    return slack.response(response_payload, response_type=_response_type)
 
 @slack.command('tteesstt', token='xxxx',
                team_id='xxxx', methods=['POST'])
