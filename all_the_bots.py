@@ -274,10 +274,10 @@ def channelGlob(**kwargs):
         _response_type = 'in_channel'
         if len(channels_response) <= 5:
             # Short list
-            format_func = lambda c: "#{channel} – {purpose} ({n} member{s})".format(channel=c['name'], purpose=c.get('purpose', {}).get('value', '🌍'), n=c['num_members'])
+            format_func = lambda c: "#{channel} – {purpose} ({n} members)".format(channel=c['name'], purpose=c.get('purpose', {}).get('value', '🌍'), n=c['num_members'])
         else:
             # Longer list
-            format_func = lambda c: "#{channel} ({n} member{s})".format(channel=c['name'], n=c['num_members'])
+            format_func = lambda c: "#{channel} ({n} members)".format(channel=c['name'], n=c['num_members'])
         response_payload = map(format_func, channels_response['channels']).join('\n')
     return slack.response(response_payload, response_type=_response_type)
 
