@@ -260,7 +260,7 @@ def channelGlob(**kwargs):
         'exclude_members': True
     }
     channels_response = requests.get("https://slack.com/api/channels.list", params=params)
-    if channels_response["ok"] !== True:
+    if channels_response["ok"] != True:
         return slack.response("Globbiddy glob error, tell an admin?", response_type='ephemeral')
     channels_response['channels'] = fnmatch.filter(channels_response['channels'], user_glob)
     if len(channels_response['channels']) <= 0:
@@ -274,10 +274,10 @@ def channelGlob(**kwargs):
         _response_type = 'in_channel'
         if len(channels_response) <= 5:
             # Short list
-            format_func = lambda c: "#{channel} – {purpose} ({n} members)".format(channel=c['name'], purpose=c.get('purpose', {}).get('value', '🌍'), c['num_members'])
+            format_func = lambda c: "#{channel} – {purpose} ({n} member{s})".format(channel=c['name'], purpose=c.get('purpose', {}).get('value', '🌍'), n=c['num_members'])
         else:
             # Longer list
-            format_func = lambda c: "#{channel} ({n} members)".format(channel=c['name'], c['num_members'])
+            format_func = lambda c: "#{channel} ({n} member{s})".format(channel=c['name'], n=c['num_members'])
         response_payload = map(format_func, channels_response['channels']).join('\n')
     return slack.response(response_payload, response_type=_response_type)
 
