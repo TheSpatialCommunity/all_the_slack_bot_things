@@ -1,70 +1,83 @@
+import os
+import fnmatch
 from datetime import datetime
-import mysql.connector, requests
-from flask import Flask
-from flask_slack import Slack
-from flask_slack import SlackError
-from slackclient import SlackClient
 from random import randint
 from threading import Thread
-from flask import jsonify
 import random
+import json
+from ConfigParser import SafeConfigParser
 
+import mysql.connector
+import requests
+from flask import (Flask, jsonify, request)
+from flask_slack import (Slack, SlackError)
+from slackclient import SlackClient
 
 from scoreboard_renderer import renderBitch
-app = Flask(__name__)
 
-email_blacklist = ['vivi@slackfu.com']
+# Load config from file not in source control
+__location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
+CONFIG = SafeConfigParser()
+CONFIG.read(os.path.join(__location__, 'config.ini'))
+TEAM_ID = CONFIG.get('slack', 'TEAM_ID')
 
-slack = Slack(app)
-app.add_url_rule('/', view_func=slack.dispatch)
-#gisdevs points xxxx team_id = 'xxxx'
-#the spatial ones flaskpaw xxxx team_id='xxxx'
-@slack.command('points', token='xxxx',
-               team_id='xxxx', methods=['POST'])
-def your_method(**kwargs):
-    #get the kwargs
-    text = kwargs.get('text')
+# Initialise Flask application
+APP = Flask(__name__)
+
+EMAIL_BLOCKLIST = [user for user in CONFIG.get('deny', 'BLOCK_SIGNUP').splitlines() if user is not None]
+
+def return_help(bot='points'):
+    return CONFIG.get('help', bot)
+
+
+slack = Slack(APP)
+APP.add_url_rule('/', view_func=slack.dispatch)
+@slack.command('points', token=CONFIG.get('slashcommands', 'points'),
+               team_id=TEAM_ID, methods=['POST'])
+def points_handler(**kwargs):
+    '''Handles the /point command'''
     user_name = kwargs.get('user_name')
-    user_id = kwargs.get('user_id')
-    channel = kwargs.get("channel_name")
-    channelID = kwargs.get("channel_id")
-    responseURL = kwargs.get("response_url")
-    #parse the natural language text kwarg and
-    #deal with the returned dictionary.
-    #dictionary keys dictate the action
-    parameters = parse_validate_text_kwarg(text)
+    parameters = parse_validate_text_kwarg(kwargs.get('text'))
     _response_type = 'ephemeral'
-    _attachments = ''
+    _attachments = None
     for key in parameters:
         if key == "help":
             response_payload = return_help()[0]
         elif key == "points":
-            response_payload = add_points(user_name,parameters[key][0],channel,parameters[key][1],parameters[key][2])
+            response_payload = add_points(
+                user_name,
+                parameters[key][0],
+                kwargs.get("channel_name"),
+                parameters[key][1],
+                parameters[key][2]
+            )
             _response_type = 'in_channel'
         elif key == "stats":
-            response_payload= stat_query(parameters[key],user_name)
+            response_payload= stat_query(parameters[key], user_name)
             _attachments = [renderBitch(response_payload)]
             response_payload=""
-            print(_attachments)
         elif key == "error":
             response_payload = parameters[key]
         elif key == "rain":
             points = parameters[key]
-            makeItRain(user_name,channelID,points,user_id,responseURL)
+            makeItRain(
+                user_name,
+                kwargs.get("channel_id"),
+                points,
+                kwargs.get('user_id')
+            )
             response_payload = "And {0} makes it rain!!! http://i.giphy.com/y8Mz1yj13s3kI.gif".format(user_name)
             _response_type = 'in_channel'
         else:
-            response_payload = "super crazy shit. call the Doctor"
-    #final response from slack
+            response_payload = "Super crazy shit. Call the Doctor"
     return slack.response(response_payload,response_type=_response_type,attachments=_attachments)
-    #return slack.response("this is text")
 
 
 # new natural language parameter parsing function
 def parse_validate_text_kwarg(text):
     args_from_text = text.split(" ")
     args_from_text[2:]= [" ".join(args_from_text[2:])]
-    if args_from_text[0] in ['me','top_5','low_5','givers','lasers','takers']:
+    if args_from_text[0] in ['me','top_5','givers','lasers','takers']:
         # found a valid statistic request return it
         return {"stats":args_from_text[0]}
     elif args_from_text[0].find("@",0)==0:
@@ -106,41 +119,29 @@ def parse_validate_text_kwarg(text):
         # return a fuck you for trying to be a dick.
         return {"error":"ERROR: Parameters invalid please check your input:{0}. Use /points ? for help".format(text)}
 
-#return help
-def return_help():
-    return ["/points @username(user to give points to) 50(points to give,"+
-            "100 - -100) reason(optional)\n " +
-            "/points me(your score)\n"+
-            "/points top_5 (top 5 on the scoreboard)\n"+
-            "/points low_5 (low 5 on the scoreboard)\n"+
-            "/points givers (top 5 givers scoreboard)\n"+
-            "/points takers (top 5 takers scoreboard)\n"]
 
 #statistic functions
 def stat_query(stat,user_name):
     # connect to database, determine the query to run, run that shit, return the rows.
     # NEED TO FORMAT THE RESPONSE AS AN ATTACHMENT. LOOK AT THE FIELDS ATTACHMENT PARAMETER IN THE SLACK API
     try:
-        cnx = mysql.connector.connect(user='xxxx', password='xxxx', host ='xxxx', database='xxxx')
+        cnx = mysql.connector.connect(user='thespatialcommun', password='hello my name is dickies dot com', host ='thespatialcommunity.mysql.pythonanywhere-services.com', database='thespatialcommun$slack-points')
         cursor = cnx.cursor()
     except Exception as e:
         return "Error connecting to the SEGA database. " + str(e)
     if stat == "me":
         # return the me query.
-        cursor.execute('select getter, sum(points) as points from points_raw where getter = "@{0}";'.format(user_name))
+        cursor.execute('select getter, sum(points) as points from points_raw where getter = "@{0}" and YEAR(time) = \'2017\';'.format(user_name))
         #return "me stat"
     elif stat == "top_5":
         #return the top_5 query
-        cursor.execute('select getter, sum(points) as points from points_raw where getter <> "@robodonut" group by getter order by points DESC limit 5;')
-    elif stat == "low_5":
-        #return the low 5 query
-        cursor.execute('select getter, sum(points) as points from points_raw group by getter order by points ASC limit 5;')
+        cursor.execute('select getter, sum(points) as points from points_raw where YEAR(time) = \'2017\' group by getter order by points DESC limit 5;')
     elif stat == "givers":
         #return the top 5 givers query
-        cursor.execute('select giver, sum(points) as points from points_raw where points >0 group by giver order by points DESC limit 5;')
+        cursor.execute('select giver, sum(points) as points from points_raw where points >0 and YEAR(time) = \'2017\' group by giver  order by points DESC limit 5;')
     elif stat == "takers":
         #return the low 5 givers query
-        cursor.execute('select giver, sum(points) as points from points_raw where points <0 group by giver order by points ASC limit 5')
+        cursor.execute('select giver, sum(points) as points from points_raw where points <0  and YEAR(time) = \'2017\' group by giver order by points ASC limit 5')
     elif stat == "lasers":
         return "http://i.giphy.com/xhbBLTLh9Ep8Y.gif"
     else:
@@ -168,10 +169,10 @@ def add_points(giver, getter, channel, points,reason):
     else:
         pass
     try:
-        cnx = mysql.connector.connect(user='xxxx',
-                              password='xxxx',
-                              host ='xxxx',
-                              database='xxxx')
+        cnx = mysql.connector.connect(user='thespatialcommun',
+                              password='hello my name is dickies dot com',
+                              host ='thespatialcommunity.mysql.pythonanywhere-services.com',
+                              database='thespatialcommun$slack-points')
 
         add_raw = ("INSERT INTO points_raw "
                     " (ID, giver, getter, channel_name, time, points, reason)"
@@ -192,22 +193,22 @@ def async(f):
     return wrapper
 
 @async
-def makeItRain(giver,channelID,points,user_id,responseURL):
-    with app.app_context():
-        token = "xxxx"
+def makeItRain(giver, channelID, points, user_id):
+    '''Makes it rain'''
+    with APP.app_context():
+        token = CONFIG.get('tokens', 'POINTS_TOKEN')
         sc = SlackClient(token)
-        #sc.api_call("channels.info", channel=channelID)
-        memberIDs = sc.api_call("channels.info", channel=channelID)['channel']['members']
+        memberIDs = sc.api_call("channels.info", channel=channelID).get('channel', {}).get('members', [])
         memberIDs.remove(user_id)
-        points_array = moneyOnTheFloor(len(memberIDs),points)
+        points_array = moneyOnTheFloor(len(memberIDs), points)
         memberNames = ["@"+ sc.api_call("users.info",user = x)['user']['name'] for x  in memberIDs]
         #getter ="@"+sc.api_call("users.info",user = member)['user']['name']
         member_points_list = list(zip([1]*len(memberIDs),[giver]*len(memberIDs),memberNames,[channelID]*len(memberIDs),
                                     [datetime.now()]*len(memberIDs), points_array,["rain"]*len(memberIDs)))
-        cnx = mysql.connector.connect(user='xxxx',
-                                  password='xxxx',
-                                  host ='xxxx',
-                                  database='xxxx')
+        cnx = mysql.connector.connect(user='thespatialcommun',
+                                  password='hello my name is dickies dot com',
+                                  host ='thespatialcommunity.mysql.pythonanywhere-services.com',
+                                  database='thespatialcommun$slack-points')
 
         add_raw = ("INSERT INTO points_raw "
                     " (ID, giver, getter, channel_name, time, points, reason)"
@@ -224,7 +225,6 @@ def makeItRain(giver,channelID,points,user_id,responseURL):
             #print(member)
             #getter ="@"+sc.api_call("users.info",user = member)['user']['name']
             #add_points(giver,getter,channelID,member_points_dict[member],"")
-        #requests.post(responseURL, data = {"And {0} makes it rain!!! http://i.giphy.com/y8Mz1yj13s3kI.gif".format(giver),response_type="in_channel"})
         #return "And {0} makes it rain!!! http://i.giphy.com/y8Mz1yj13s3kI.gif".format(giver)
 
 def moneyOnTheFloor(n, r):
@@ -239,42 +239,190 @@ def moneyOnTheFloor(n, r):
         numbers.append(0)
     return numbers
 
+def split(s, n):
+    return (s.split() + [None] * n)[:n] if s else [None] * n
 
 
+@slack.command('raffle', token=CONFIG.get('slashcommands', 'raffle'), team_id=TEAM_ID, methods=['POST'])
+def raffle(**kwargs):
+    '''
+    Runs a raffle with Raphael's insight.
 
-@slack.command('tteesstt', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+    Run a raffle with one winner:
+    /raffle 1
+
+    Run a raffle with ten winners:
+    /raffle 10
+
+    Ten winners is the maximum size of a draw (just to limit API requests and
+    to keep the response snappy).
+
+    The contestants are those who are members of the channel from where this
+    command is called.
+
+    Only admins may successfully run this command. All others will be denied.
+
+    Admins and owners are always inelligible to win, because by their status
+    they can modify this very function to affect the outcome of any raffle.
+    "Restricted", "ultra restricted", "bot", and "stranger" users are also
+    inelligible.
+
+    Works with conversations.members API instead of channel.info, so that this
+    will be robust even in channels with more than 1000 members.
+    '''
+    EXCLUDE_ADMINS = True
+    EXCLUDE_OWNERS = True
+    EXCLUDE_RESTRICTED_USERS = False
+    EXCLUDE_BOTS = True
+    n_winners = kwargs.get('text', 1)
+    try:
+        n_winners = int(n_winners)
+    except ValueError:
+        return slack.response("Number of winners must be an integer number", response_type='ephemeral')
+    token = CONFIG.get('tokens', 'RAFFLE_TOKEN')
+    sc = SlackClient(token)
+    n_winners = min(max(1, n_winners), 10)
+    calling_user = sc.api_call("users.info", user=kwargs['user_id'])['user']
+    if not calling_user['is_admin']:
+        return slack.response('When one is painting, one does not think', response_type='ephemeral')
+    params = {
+        'token': token,
+        'channel': kwargs['channel_id'],
+        'limit': 200
+    }
+    members = []
+    conversation_members = sc.api_call("conversations.members", **params)
+    members = conversation_members['members']
+    while conversation_members['response_metadata']['next_cursor']:
+        conversation_members = sc.api_call("conversations.members", cursor=conversation_members['response_metadata']['next_cursor'], **params)
+        members.extend(conversation_members['members'])
+    winners = random.sample(members, min(len(members), n_winners))
+    if len(winners) == 0:
+        return slack.response('In space, no one can hear you scream', response_type='emphemeral')
+    winners = [sc.api_call("users.info", user=userId) for userId in winners]
+    # Eliminate admins and other excluded users, redrawing from the pool until there is a set of unique winners
+    # TODO could add an "activity" criteria? user.updated ?
+    eliminating_criteria = [lambda user: user.get('deleted', False)]
+    if EXCLUDE_ADMINS:
+        eliminating_criteria.append(lambda user: user.get('is_admin', False))
+    if EXCLUDE_OWNERS:
+        eliminating_criteria.append(lambda user: user.get('is_owner', False) or user.get('is_primary_owner', False))
+    if EXCLUDE_RESTRICTED_USERS:
+        eliminating_criteria.append(lambda user: user.get('is_restricted', False) or user.get('is_ultra_restricted', False))
+    if EXCLUDE_BOTS:
+        eliminating_criteria.append(lambda user: user.get('is_bot', False))
+    eliminate = lambda user: any([f(user) for f in eliminating_criteria])
+    for idx in range(0, len(winners)):
+        redraws = 0
+        while eliminate(winners[idx]['user']):
+            # Selected winner is ineligible! Redraw for their spot
+            if redraws > 5:
+                return slack.response("I'm having some trouble here... are there enough people in this channel who are elligible to win?", response_type='ephemeral')
+            redrawn_winner = sc.api_call("users.info", user=random.sample(members, 1)[0])
+            redraws += 1
+            if redrawn_winner in winners:
+                # Drew someone who is already a winner
+                continue
+            winners[idx] = redrawn_winner
+    winners = [winner['user'] for winner in winners]
+    winners = ["<@{id}|{name}>".format(id=winner['id'], name=winner['profile']['display_name']) for winner in winners]
+    response = 'The results of the raffle are...\n\n'
+    ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n/10%10!=1)*(n%10<4)*n%10::4])
+    prizes = {1: "🥇", 2: "🥈", 3: "🥉"}
+    for idx, winner in enumerate(winners):
+        response += '\t\t{prize} {ordinal} place: {user}\n\n'.format(prize=prizes.get(idx+1, "🏆"), ordinal=ordinal(idx+1), user=winner)
+    response += 'Congratulations to the winners!\nBest of luck to the rest of you in the next raffle!'
+    return slack.response(response, response_type='in_channel')
+
+@slack.command('glob', token=config.get('slashcommands', 'glob'), team_id=TEAM_ID, methods=['POST'])
+def channelGlob(**kwargs):
+    '''
+    Example of intended use:
+    /channels loc-*
+    #loc-africa (50 members)
+    #loc-australia (43 members)
+
+    https://api.slack.com/methods/channels.list
+    https://api.slack.com/types/channel
+    '''
+    DEFAULT_LIMIT = 5
+    user_glob, limit = split(kwargs.get('text', None), 2)
+    if not limit or not limit.isdigit():
+        if limit == 'all':
+            limit = None
+        else:
+            limit = DEFAULT_LIMIT
+    else:
+        limit = int(limit)
+    if not user_glob:
+        return slack.response("Try adding a search term, like '/glob loc-*'", response_type='ephemeral')
+    elif ''.join(set(user_glob)) == '*' and (limit == None or limit > 30):
+        return slack.response("That's TOO MUCH MAN 🐴", response_type='ephemeral')
+    token = CONFIG.get('tokens', 'CHANNEL_GLOB_TOKEN')
+    params = {
+        'token': token,
+        'exclude_archived': True,
+        'exclude_members': True
+    }
+    sc = SlackClient(token)
+    # channels_response = requests.get("https://slack.com/api/channels.list", params=params)
+    channels_response = sc.api_call("channels.list", **params)
+    print([channel['name'] for channel in channels_response['channels']])
+    if channels_response.get("ok", True) != True:
+        return slack.response("Globbiddy glob error, tell an admin?", response_type='ephemeral')
+    matching_channels = fnmatch.filter([channel['name'] for channel in channels_response['channels']], user_glob)
+    channels_response['channels'] = list(filter(lambda channel: not channel.get('is_private', True) and channel['name'] in matching_channels, channels_response['channels']))
+    n_matches = len(channels_response['channels'])
+    if n_matches <= 0:
+        # No channels match
+        _response_type = 'ephemeral'
+        response_payload = "Sorry, no channels match {glob}".format(glob=user_glob)
+    else:
+        # Got at least one channel
+        # Sort them based on membership
+        channels_response['channels'].sort(key=lambda c: c['num_members'], reverse=True)
+        _response_type = 'in_channel'
+        if n_matches <= 5 or (limit and limit <= 5):
+            # Short list
+            format_func = lambda c: "<#{id}|{channel}> – {purpose} ({n} members)".format(id=c['id'], channel=c['name'], purpose=c.get('purpose', {}).get('value', ''), n=c['num_members'])
+        else:
+            # Longer list
+            format_func = lambda c: "<#{id}|{channel}> ({n} members)".format(id=c['id'], channel=c['name'], n=c['num_members'])
+        response_payload = '\n'.join(list(map(format_func, channels_response['channels'][:limit])))
+    return slack.response("Top {limit} matching channels:\n".format(limit=min([v for v in [limit, n_matches] if v])) + response_payload, response_type=_response_type)
+
+
+@slack.command('tteesstt', token=CONFIG.get('slashcommands', 'tteesstt'),
+               team_id=TEAM_ID, methods=['POST'])
 def bum(**kwargs):
     #get the kwargs
     text = kwargs.get('text')
     user_name = kwargs.get('user_name')
     user_id = kwargs.get('user_id')
     channel = kwargs.get("channel_name")
-
-    #parse the natural language text kwarg and
-    #deal with the returned dictionary.
-    #dictionary keys dictate the action
+    # parse the natural language text kwarg and
+    # deal with the returned dictionary.
+    # dictionary keys dictate the action
     parameters = parse_validate_text_kwarg(text)
     _response_type = 'ephemeral'
-    return slack.response("its working",response_type=_response_type)
-    for key in parameters:
-        if key == "help":
-            response_payload = return_help()[0]
-        elif key == "points":
-            response_payload = add_points(user_name,parameters[key][0],channel,parameters[key][1],parameters[key][2])
-            _response_type = 'in_channel'
-        elif key == "stats":
-            response_payload= stat_query.renderBitch(parameters[key],user_name)
-        elif key == "error":
-            response_payload = parameters[key]
-        else:
-            response_payload = "super crazy shit. call the Doctor"
-    #final response from slack
+    response_payload = "it's working!"
+    # for key in parameters:
+    #     if key == "help":
+    #         response_payload = return_help()[0]
+    #     elif key == "points":
+    #         response_payload = add_points(user_name,parameters[key][0],channel,parameters[key][1],parameters[key][2])
+    #         _response_type = 'in_channel'
+    #     elif key == "stats":
+    #         response_payload= stat_query.renderBitch(parameters[key],user_name)
+    #     elif key == "error":
+    #         response_payload = parameters[key]
+    #     else:
+    #         response_payload = "super crazy shit. call the Doctor"
+    return slack.response(response_payload, response_type=_response_type)
 
-    #return slack.response("this is text")
 
-@slack.command('badgers', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('badgers', token=CONFIG.get('slashcommands', 'badgers'),
+               team_id=TEAM_ID, methods=['POST'])
 def bum(**kwargs):
     #get the kwargs
     text = kwargs.get('text')
@@ -289,26 +437,26 @@ def bum(**kwargs):
     _response_type = 'ephemeral'
     return slack.response("https://www.youtube.com/watch?v=gx6TBrfCW54&feature=youtu.be&t=16s",response_type="in_channel")
 
-@slack.command('thumbsup', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('thumbsup', token=CONFIG.get('slashcommands', 'thumbsup'),
+               team_id=TEAM_ID, methods=['POST'])
 def sl4(**kwargs):
     return slack.response("https://imgur.com/uKL8tJg.gif",response_type='in_channel')
 
-@slack.command('believe', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('believe', token=CONFIG.get('slashcommands', 'believe'),
+               team_id=TEAM_ID, methods=['POST'])
 def sl5(**kwargs):
     return slack.response("https://youtu.be/YLO7tCdBVrA?t=2s",response_type='in_channel')
 
-@slack.command('hi', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('hi', token=CONFIG.get('slashcommands', 'hi'),
+               team_id=TEAM_ID, methods=['POST'])
 def sl6(**kwargs):
     return slack.response("https://media.giphy.com/media/SYhK02vJMUeL6/giphy.gif",response_type='in_channel')
 
 
 
 
-@slack.command('deepthoughts', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('deepthoughts', token=CONFIG.get('slashcommands', 'deepthoughts'),
+               team_id=TEAM_ID, methods=['POST'])
 def sl7(**kwargs):
     quotes = [
     "When you're riding in a time machine way far into the future, don't stick your elbow out the window, or it'll turn into a fossil.",
@@ -452,53 +600,43 @@ def sl7(**kwargs):
 ]
     return slack.response(random.choice(quotes),response_type='in_channel')
 
-@slack.command('thisisfine', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('thisisfine', token=CONFIG.get('slashcommands', 'thisisfine'),
+               team_id=TEAM_ID, methods=['POST'])
 def sl8(**kwargs):
     return slack.response('http://gph.is/1IPoO7R',response_type='in_channel')
 
-@slack.command('iwritecode', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('iwritecode', token=CONFIG.get('slashcommands', 'iwritecode'),
+               team_id=TEAM_ID, methods=['POST'])
 def sl9(**kwargs):
     return slack.response('http://resguru.com/wp-content/uploads/2011/05/angry-keyboard-user.gif',response_type='in_channel')
 
-@slack.command('wtf', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('wtf', token=CONFIG.get('slashcommands', 'wtf'),
+               team_id=TEAM_ID, methods=['POST'])
 def s20(**kwargs):
     return slack.response('http://media1.giphy.com/media/aZ3LDBs1ExsE8/giphy.gif',response_type='in_channel')
 
-@slack.command('call_admin', token='xxxx',
-               team_id='xxxx', methods=['POST'])
+@slack.command('call_admin', token=CONFIG.get('slashcommands', 'call_admin'),
+               team_id=TEAM_ID, methods=['POST'])
 def s21(**kwargs):
     text = kwargs.get('text')
     user_name = kwargs.get('user_name')
     user_id = kwargs.get('user_id')
     from_channel = kwargs.get("channel_name")
     channel = 'admin_team'
-    bot_token = 'xxxx'
+    bot_token = 'xoxb-131373332739-W3Usf1SZhIFNHjfwLIYHllqf'
     bot_username = 'admin_assistant'
     parameters = {'token':bot_token, 'text':"user: {0}, channel: {1}, message: {2}".format(user_name,from_channel, text), 'channel':channel,
                     'username':bot_username,'as_user':'true'}
     requests.get("https://slack.com/api/chat.postMessage",params=parameters)
     return slack.response('admin called',response_type='ephemeral')
 
-@app.route('/dicks/<how_many_disks>')
-def dicks(how_many_disks):
-    d = "8====D"
-    bag_of_dicks =[]
-    for x in range(int(how_many_disks)):
-        bag_of_dicks.append(d)
-    string_dicks = ",".join(bag_of_dicks)
-    return '{"dicks":{'+ string_dicks+'}}'
-
-
-@app.route('/newuser/<email>')
+@APP.route('/newuser_/<email>')
 def newuser(email):
-    if email not in email_blacklist:
+    if email not in EMAIL_BLOCKLIST:
         try:
             channel = 'admin_team'
-            bot_token = 'xxxx'
-            bot_username = 'xxxx'
+            bot_token = CONFIG.get('tokens', 'INVITE_TOKEN')
+            bot_username = 'signupbot'
             parameters = {'token':bot_token, 'text':email, 'channel':channel,
                     'username':bot_username,'as_user':'true'}
             requests.get("https://slack.com/api/chat.postMessage",params=parameters)
@@ -507,4 +645,83 @@ def newuser(email):
             return {"status": "well fuck"}
     else:
         return {"status": "EMAIL BLACKLISTED"}
-    #requests.get("https://slack.com/api/chat.postMessage?token=xoxb-105417684083-kJyxsrt0bdFldkROAkfd31Ng&channel=admin_team&text={0}".format(email))
+
+@APP.route('/newuser/<email>')
+def submit_email(email):
+    invite_user_attach = json.dumps([
+        {"title":"A New Player Has Entered The Game.",
+            "text": "Invite",
+            "fallback": "You are unable to invite this user",
+            "callback_id": "invite_user",
+            "color": "#3AA3E3",
+            "attachment_type": "default",
+            "actions": [
+                {
+                    "name": "action",
+                    "text": "Invite",
+                    "type": "button",
+                    "value": "invite"
+                },
+
+                {
+                    "name": "game",
+                    "text": "Decline",
+                    "style": "danger",
+                    "type": "button",
+                    "value": "decline",
+                    "confirm": {
+                        "title": "Are you sure?",
+                        "text": "Lots of folks are pretty cool once you know them...",
+                        "ok_text": "Yes",
+                        "dismiss_text": "No"
+                    }
+                }
+            ]
+        }
+    ])
+    channel = 'admin_team'
+    bot_token = CONFIG.get('tokens', 'NEWUSER_TOKEN')
+    bot_username = 'superinvite'
+    parameters = {'token':bot_token, 'text':email,'attachments': invite_user_attach, 'channel':channel,
+                'username':bot_username,'as_user':'true'}
+    requests.get("https://slack.com/api/chat.postMessage",params=parameters)
+    return jsonify({"status":200})
+
+# token needs to be an admin user token, not a bot token
+@APP.route('/superinvite',methods = ['GET', 'POST'])
+def button_response():
+    payload = json.loads(request.form["payload"])
+    button_presser = payload["user"]["name"]
+    action_ = payload["actions"][0]["value"]
+    requestor = payload["original_message"]["text"].split("|")[-1][:-1]
+    channel = 'admin_team'
+    bot_token = CONFIG.get('tokens', 'SUPERINVITE_TOKEN')
+    bot_username = 'superinvite'
+    if action_ == 'invite':
+        action_taken = "invited"
+        x = requests.post('https://slack.com/api/users.admin.invite?token={token}&email={email}'.format(token=bot_token,email=requestor))
+    else:
+        action_taken = "declined to invite"
+    return ("{user} has {action} {email} {x}").format(user=button_presser,action=action_taken,email=requestor,x=x.text)
+
+@slack.command('xkcd', token=CONFIG.get('slashcommands', 'xkcd'),
+               team_id=TEAM_ID, methods=['POST'])
+def s24(**kwargs):
+    random_xkcd_req = requests.get('http://c.xkcd.com/random/comic', allow_redirects=False)
+    random_xkcd = random_xkcd_req.headers['Location']
+    return slack.response(random_xkcd,response_type='in_channel')
+
+@slack.command('sick_burn', token=CONFIG.get('slashcommands', 'sick_burn'),
+               team_id=TEAM_ID, methods=['POST'])
+def s20(**kwargs):
+    return slack.response('https://en.wikipedia.org/wiki/List_of_burn_centers_in_the_United_States',response_type='in_channel')
+
+@slack.command('neat', token=CONFIG.get('slashcommands', 'neat'),
+               team_id=TEAM_ID, methods=['POST'])
+def s20(**kwargs):
+    return slack.response('https://i.imgur.com/iYOXpB3.gif',response_type='in_channel')
+
+@slack.command('trap', token=CONFIG.get('slashcommands', 'trap'),
+               team_id=TEAM_ID, methods=['POST'])
+def s20(**kwargs):
+    return slack.response('https://img.memecdn.com/its-a-trap_o_491986.jpg',response_type='in_channel')
