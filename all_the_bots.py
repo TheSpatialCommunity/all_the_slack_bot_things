@@ -119,13 +119,15 @@ def parse_validate_text_kwarg(text):
         # return a fuck you for trying to be a dick.
         return {"error":"ERROR: Parameters invalid please check your input:{0}. Use /points ? for help".format(text)}
 
+def make_db_connection():
+    return mysql.connector.connect(user=CONFIG.get('db', 'username'), password=CONFIG.get('db', 'password'), host=CONFIG.get('db', 'host'), database=CONFIG.get('db', 'dbname'))
 
 #statistic functions
 def stat_query(stat,user_name):
     # connect to database, determine the query to run, run that shit, return the rows.
     # NEED TO FORMAT THE RESPONSE AS AN ATTACHMENT. LOOK AT THE FIELDS ATTACHMENT PARAMETER IN THE SLACK API
     try:
-        cnx = mysql.connector.connect(user='thespatialcommun', password='hello my name is dickies dot com', host ='thespatialcommunity.mysql.pythonanywhere-services.com', database='thespatialcommun$slack-points')
+        cnx = make_db_connection()
         cursor = cnx.cursor()
     except Exception as e:
         return "Error connecting to the SEGA database. " + str(e)
@@ -169,11 +171,7 @@ def add_points(giver, getter, channel, points,reason):
     else:
         pass
     try:
-        cnx = mysql.connector.connect(user='thespatialcommun',
-                              password='hello my name is dickies dot com',
-                              host ='thespatialcommunity.mysql.pythonanywhere-services.com',
-                              database='thespatialcommun$slack-points')
-
+        cnx = make_db_connection()
         add_raw = ("INSERT INTO points_raw "
                     " (ID, giver, getter, channel_name, time, points, reason)"
                     "VALUES (%s,%s,%s,%s,%s,%s,%s)")
@@ -205,11 +203,7 @@ def makeItRain(giver, channelID, points, user_id):
         #getter ="@"+sc.api_call("users.info",user = member)['user']['name']
         member_points_list = list(zip([1]*len(memberIDs),[giver]*len(memberIDs),memberNames,[channelID]*len(memberIDs),
                                     [datetime.now()]*len(memberIDs), points_array,["rain"]*len(memberIDs)))
-        cnx = mysql.connector.connect(user='thespatialcommun',
-                                  password='hello my name is dickies dot com',
-                                  host ='thespatialcommunity.mysql.pythonanywhere-services.com',
-                                  database='thespatialcommun$slack-points')
-
+        cnx = make_db_connection()
         add_raw = ("INSERT INTO points_raw "
                     " (ID, giver, getter, channel_name, time, points, reason)"
                     "VALUES (%s,%s,%s,%s,%s,%s,%s)")
@@ -623,7 +617,7 @@ def s21(**kwargs):
     user_id = kwargs.get('user_id')
     from_channel = kwargs.get("channel_name")
     channel = 'admin_team'
-    bot_token = 'xoxb-131373332739-W3Usf1SZhIFNHjfwLIYHllqf'
+    bot_token = CONFIG.get('tokens', 'CALL_ADMIN_TOKEN')
     bot_username = 'admin_assistant'
     parameters = {'token':bot_token, 'text':"user: {0}, channel: {1}, message: {2}".format(user_name,from_channel, text), 'channel':channel,
                     'username':bot_username,'as_user':'true'}
