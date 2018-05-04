@@ -133,17 +133,17 @@ def stat_query(stat,user_name):
         return "Error connecting to the SEGA database. " + str(e)
     if stat == "me":
         # return the me query.
-        cursor.execute('select getter, sum(points) as points from points_raw where getter = "@{0}" and YEAR(time) = \'2017\';'.format(user_name))
+        cursor.execute('select getter, sum(points) as points from points_raw where getter = "@{0}" and YEAR(time) = YEAR(CURDATE());'.format(user_name))
         #return "me stat"
     elif stat == "top_5":
         #return the top_5 query
-        cursor.execute('select getter, sum(points) as points from points_raw where YEAR(time) = \'2017\' group by getter order by points DESC limit 5;')
+        cursor.execute('select getter, sum(points) as points from points_raw where YEAR(time) = YEAR(CURDATE()) group by getter order by points DESC limit 5;')
     elif stat == "givers":
         #return the top 5 givers query
-        cursor.execute('select giver, sum(points) as points from points_raw where points >0 and YEAR(time) = \'2017\' group by giver  order by points DESC limit 5;')
+        cursor.execute('select giver, sum(points) as points from points_raw where points >0 and YEAR(time) = YEAR(CURDATE()) group by giver  order by points DESC limit 5;')
     elif stat == "takers":
         #return the low 5 givers query
-        cursor.execute('select giver, sum(points) as points from points_raw where points <0  and YEAR(time) = \'2017\' group by giver order by points ASC limit 5')
+        cursor.execute('select giver, sum(points) as points from points_raw where points <0  and YEAR(time) = YEAR(CURDATE()) group by giver order by points ASC limit 5')
     elif stat == "lasers":
         return "http://i.giphy.com/xhbBLTLh9Ep8Y.gif"
     else:
