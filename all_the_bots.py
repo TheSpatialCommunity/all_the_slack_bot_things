@@ -446,8 +446,9 @@ def sl5(**kwargs):
 def sl6(**kwargs):
     return slack.response("https://media.giphy.com/media/SYhK02vJMUeL6/giphy.gif",response_type='in_channel')
 
-
-
+@slack.command('nope', token=CONFIG.get('slashcommands', 'nope'), response_type='in_channel')
+def nope(**kwargs):
+    return slack.response("http://www.reactiongifs.com/wp-content/uploads/2013/02/nope.gif",response_type='in_channel')
 
 @slack.command('deepthoughts', token=CONFIG.get('slashcommands', 'deepthoughts'),
                team_id=TEAM_ID, methods=['POST'])
