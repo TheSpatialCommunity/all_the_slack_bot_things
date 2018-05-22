@@ -603,7 +603,7 @@ def sl8(**kwargs):
 @slack.command('iwritecode', token=CONFIG.get('slashcommands', 'iwritecode'),
                team_id=TEAM_ID, methods=['POST'])
 def sl9(**kwargs):
-    return slack.response('http://resguru.com/wp-content/uploads/2011/05/angry-keyboard-user.gif',response_type='in_channel')
+    return slack.response('https://media.giphy.com/media/g8GfH3i5F0hby/giphy.gif',response_type='in_channel')
 
 @slack.command('wtf', token=CONFIG.get('slashcommands', 'wtf'),
                team_id=TEAM_ID, methods=['POST'])
