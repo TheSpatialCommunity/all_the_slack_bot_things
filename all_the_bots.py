@@ -721,7 +721,7 @@ def s20(**kwargs):
     return slack.response('https://img.memecdn.com/its-a-trap_o_491986.jpg',response_type='in_channel')
 
 @slack.command('markov', token=CONFIG.get('slashcommands', 'markov'),
-               team_id='T06QBQ0DV', methods=['POST'])
+               team_id=TEAM_ID, methods=['POST'])
 def markov(**kwargs):
     token = CONFIG.get('tokens', 'CHANNEL_MARKOV_TOKEN')
     channel_id = kwargs.get("channel_id")
