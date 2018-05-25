@@ -361,7 +361,6 @@ def channelGlob(**kwargs):
     sc = SlackClient(token)
     # channels_response = requests.get("https://slack.com/api/channels.list", params=params)
     channels_response = sc.api_call("channels.list", **params)
-    print([channel['name'] for channel in channels_response['channels']])
     if channels_response.get("ok", True) != True:
         return slack.response("Globbiddy glob error, tell an admin?", response_type='ephemeral')
     matching_channels = fnmatch.filter([channel['name'] for channel in channels_response['channels']], user_glob)
@@ -720,3 +719,27 @@ def s20(**kwargs):
                team_id=TEAM_ID, methods=['POST'])
 def s20(**kwargs):
     return slack.response('https://img.memecdn.com/its-a-trap_o_491986.jpg',response_type='in_channel')
+
+@slack.command('markov', token=CONFIG.get('slashcommands', 'markov'),
+               team_id='T06QBQ0DV', methods=['POST'])
+def markov(**kwargs):
+    token = CONFIG.get('tokens', 'CHANNEL_MARKOV_TOKEN')
+    channel_id = kwargs.get("channel_id")
+    users_to_consider = kwargs.get('text', '')
+    params = {
+        'token': token,
+        'channel': channel_id,
+        'count': 1000,
+        'unreads': False
+    }
+    sc = SlackClient(token)
+    channels_response = sc.api_call("channels.history", **params)
+    corpus = list(filter(lambda msg: not msg['text'].startswith('/') and not msg.get('bot_id', None) and msg.get('user', None), channels_response.get('messages', [])))
+    if users_to_consider:
+        corpus = list(filter(lambda msg: msg.get('user') in users_to_consider, corpus))
+    corpus = '. '.join(list(map(lambda msg: msg.get('text', '').strip().strip('.'), corpus))) + '.'
+    model = markovify.Text(corpus)
+    output = model.make_sentence(tries=100)
+    if not output:
+        return slack.response('Unable to make a sentence! Try again, maybe in a more active channel.', response_type='ephemeral')
+    return slack.response(output, response_type='in_channel')
