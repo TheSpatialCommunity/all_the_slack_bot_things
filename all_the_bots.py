@@ -12,6 +12,7 @@ import requests
 from flask import (Flask, jsonify, request)
 from flask_slack import (Slack, SlackError)
 from slackclient import SlackClient
+import markovify
 
 from scoreboard_renderer import renderBitch
 
