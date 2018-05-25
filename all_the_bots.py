@@ -5,7 +5,7 @@ from random import randint
 from threading import Thread
 import random
 import json
-from ConfigParser import SafeConfigParser
+from configparser import SafeConfigParser
 
 import mysql.connector
 import requests
@@ -23,16 +23,15 @@ CONFIG.read(os.path.join(__location__, 'config.ini'))
 TEAM_ID = CONFIG.get('slack', 'TEAM_ID')
 
 # Initialise Flask application
-APP = Flask(__name__)
+app = Flask(__name__)
 
 EMAIL_BLOCKLIST = [user for user in CONFIG.get('deny', 'BLOCK_SIGNUP').splitlines() if user is not None]
 
 def return_help(bot='points'):
     return CONFIG.get('help', bot)
 
-
-slack = Slack(APP)
-APP.add_url_rule('/', view_func=slack.dispatch)
+slack = Slack(app)
+app.add_url_rule('/', view_func=slack.dispatch)
 @slack.command('points', token=CONFIG.get('slashcommands', 'points'),
                team_id=TEAM_ID, methods=['POST'])
 def points_handler(**kwargs):
@@ -194,7 +193,7 @@ def async(f):
 @async
 def makeItRain(giver, channelID, points, user_id):
     '''Makes it rain'''
-    with APP.app_context():
+    with app.app_context():
         token = CONFIG.get('tokens', 'POINTS_TOKEN')
         sc = SlackClient(token)
         memberIDs = sc.api_call("channels.info", channel=channelID).get('channel', {}).get('members', [])
@@ -329,7 +328,7 @@ def raffle(**kwargs):
     response += 'Congratulations to the winners!\nBest of luck to the rest of you in the next raffle!'
     return slack.response(response, response_type='in_channel')
 
-@slack.command('glob', token=config.get('slashcommands', 'glob'), team_id=TEAM_ID, methods=['POST'])
+@slack.command('glob', token=CONFIG.get('slashcommands', 'glob'), team_id=TEAM_ID, methods=['POST'])
 def channelGlob(**kwargs):
     '''
     Example of intended use:
@@ -388,7 +387,7 @@ def channelGlob(**kwargs):
 
 @slack.command('tteesstt', token=CONFIG.get('slashcommands', 'tteesstt'),
                team_id=TEAM_ID, methods=['POST'])
-def bum(**kwargs):
+def tteesstt(**kwargs):
     #get the kwargs
     text = kwargs.get('text')
     user_name = kwargs.get('user_name')
@@ -417,42 +416,32 @@ def bum(**kwargs):
 
 @slack.command('badgers', token=CONFIG.get('slashcommands', 'badgers'),
                team_id=TEAM_ID, methods=['POST'])
-def bum(**kwargs):
-    #get the kwargs
-    text = kwargs.get('text')
-    user_name = kwargs.get('user_name')
-    user_id = kwargs.get('user_id')
-    channel = kwargs.get("channel_name")
-
-    #parse the natural language text kwarg and
-    #deal with the returned dictionary.
-    #dictionary keys dictate the action
-    parameters = parse_validate_text_kwarg(text)
-    _response_type = 'ephemeral'
+def badgers(**kwargs):
     return slack.response("https://www.youtube.com/watch?v=gx6TBrfCW54&feature=youtu.be&t=16s",response_type="in_channel")
 
 @slack.command('thumbsup', token=CONFIG.get('slashcommands', 'thumbsup'),
                team_id=TEAM_ID, methods=['POST'])
-def sl4(**kwargs):
+def thumbsup(**kwargs):
     return slack.response("https://imgur.com/uKL8tJg.gif",response_type='in_channel')
 
 @slack.command('believe', token=CONFIG.get('slashcommands', 'believe'),
                team_id=TEAM_ID, methods=['POST'])
-def sl5(**kwargs):
+def believe(**kwargs):
     return slack.response("https://youtu.be/YLO7tCdBVrA?t=2s",response_type='in_channel')
 
 @slack.command('hi', token=CONFIG.get('slashcommands', 'hi'),
                team_id=TEAM_ID, methods=['POST'])
-def sl6(**kwargs):
+def hi(**kwargs):
     return slack.response("https://media.giphy.com/media/SYhK02vJMUeL6/giphy.gif",response_type='in_channel')
 
-@slack.command('nope', token=CONFIG.get('slashcommands', 'nope'), response_type='in_channel')
+@slack.command('nope', token=CONFIG.get('slashcommands', 'nope'),
+               team_id=TEAM_ID, methods=['POST'])
 def nope(**kwargs):
     return slack.response("http://www.reactiongifs.com/wp-content/uploads/2013/02/nope.gif",response_type='in_channel')
 
 @slack.command('deepthoughts', token=CONFIG.get('slashcommands', 'deepthoughts'),
                team_id=TEAM_ID, methods=['POST'])
-def sl7(**kwargs):
+def deepthoughts(**kwargs):
     quotes = [
     "When you're riding in a time machine way far into the future, don't stick your elbow out the window, or it'll turn into a fossil.",
     "If you were a pirate, you know what would be the one thing that would really make you mad? Treasure chests with no handles. How the hell are you supposed to carry it?!",
@@ -597,22 +586,22 @@ def sl7(**kwargs):
 
 @slack.command('thisisfine', token=CONFIG.get('slashcommands', 'thisisfine'),
                team_id=TEAM_ID, methods=['POST'])
-def sl8(**kwargs):
+def thisisfine(**kwargs):
     return slack.response('http://gph.is/1IPoO7R',response_type='in_channel')
 
 @slack.command('iwritecode', token=CONFIG.get('slashcommands', 'iwritecode'),
                team_id=TEAM_ID, methods=['POST'])
-def sl9(**kwargs):
+def iwritecode(**kwargs):
     return slack.response('https://media.giphy.com/media/g8GfH3i5F0hby/giphy.gif',response_type='in_channel')
 
 @slack.command('wtf', token=CONFIG.get('slashcommands', 'wtf'),
                team_id=TEAM_ID, methods=['POST'])
-def s20(**kwargs):
+def wtf(**kwargs):
     return slack.response('http://media1.giphy.com/media/aZ3LDBs1ExsE8/giphy.gif',response_type='in_channel')
 
 @slack.command('call_admin', token=CONFIG.get('slashcommands', 'call_admin'),
                team_id=TEAM_ID, methods=['POST'])
-def s21(**kwargs):
+def call_admin(**kwargs):
     text = kwargs.get('text')
     user_name = kwargs.get('user_name')
     user_id = kwargs.get('user_id')
@@ -625,7 +614,7 @@ def s21(**kwargs):
     requests.get("https://slack.com/api/chat.postMessage",params=parameters)
     return slack.response('admin called',response_type='ephemeral')
 
-@APP.route('/newuser_/<email>')
+@app.route('/newuser_/<email>')
 def newuser(email):
     if email not in EMAIL_BLOCKLIST:
         try:
@@ -641,7 +630,7 @@ def newuser(email):
     else:
         return {"status": "EMAIL BLACKLISTED"}
 
-@APP.route('/newuser/<email>')
+@app.route('/newuser/<email>')
 def submit_email(email):
     invite_user_attach = json.dumps([
         {"title":"A New Player Has Entered The Game.",
@@ -683,7 +672,7 @@ def submit_email(email):
     return jsonify({"status":200})
 
 # token needs to be an admin user token, not a bot token
-@APP.route('/superinvite',methods = ['GET', 'POST'])
+@app.route('/superinvite',methods = ['GET', 'POST'])
 def button_response():
     payload = json.loads(request.form["payload"])
     button_presser = payload["user"]["name"]
@@ -699,26 +688,27 @@ def button_response():
         action_taken = "declined to invite"
     return ("{user} has {action} {email} {x}").format(user=button_presser,action=action_taken,email=requestor,x=x.text)
 
-@slack.command('xkcd', token=CONFIG.get('slashcommands', 'xkcd'),
-               team_id=TEAM_ID, methods=['POST'])
-def s24(**kwargs):
-    random_xkcd_req = requests.get('http://c.xkcd.com/random/comic', allow_redirects=False)
-    random_xkcd = random_xkcd_req.headers['Location']
-    return slack.response(random_xkcd,response_type='in_channel')
 
 @slack.command('sick_burn', token=CONFIG.get('slashcommands', 'sick_burn'),
                team_id=TEAM_ID, methods=['POST'])
-def s20(**kwargs):
+def sick_burn(**kwargs):
     return slack.response('https://en.wikipedia.org/wiki/List_of_burn_centers_in_the_United_States',response_type='in_channel')
 
 @slack.command('neat', token=CONFIG.get('slashcommands', 'neat'),
                team_id=TEAM_ID, methods=['POST'])
-def s20(**kwargs):
+def neat(**kwargs):
     return slack.response('https://i.imgur.com/iYOXpB3.gif',response_type='in_channel')
+
+@slack.command('xkcd', token=CONFIG.get('slashcommands', 'xkcd'),
+               team_id=TEAM_ID, methods=['POST'])
+def xkcd(**kwargs):
+    random_xkcd_req = requests.get('http://c.xkcd.com/random/comic', allow_redirects=False)
+    random_xkcd = random_xkcd_req.headers['Location']
+    return slack.response(random_xkcd,response_type='in_channel')
 
 @slack.command('trap', token=CONFIG.get('slashcommands', 'trap'),
                team_id=TEAM_ID, methods=['POST'])
-def s20(**kwargs):
+def trap(**kwargs):
     return slack.response('https://img.memecdn.com/its-a-trap_o_491986.jpg',response_type='in_channel')
 
 @slack.command('markov', token=CONFIG.get('slashcommands', 'markov'),

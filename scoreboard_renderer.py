@@ -25,9 +25,6 @@ def returnScoreboard(scoreList=None,title=None):
     data = scoreboardObj(title=title)
 
     for i, item in enumerate(scoreList):
-        print("here i am")
-        print(scoreList)
-        print (item)
         user, score = item
         score = str(int(score))
 
