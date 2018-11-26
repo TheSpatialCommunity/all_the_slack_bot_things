@@ -587,7 +587,7 @@ def deepthoughts(**kwargs):
 @slack.command('thisisfine', token=CONFIG.get('slashcommands', 'thisisfine'),
                team_id=TEAM_ID, methods=['POST'])
 def thisisfine(**kwargs):
-    return slack.response('https://s3-us-west-2.amazonaws.com/robodonut/thespatialcommunity/this+is+fine.gif',response_type='in_channel')
+    return slack.response('https://s3-us-west-2.amazonaws.com/thespatialcommunity/assets/this+is+fine.gif',response_type='in_channel')
 
 @slack.command('iwritecode', token=CONFIG.get('slashcommands', 'iwritecode'),
                team_id=TEAM_ID, methods=['POST'])
